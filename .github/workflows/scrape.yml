@@ -1,0 +1,58 @@
+name: scrape-transit
+
+# Git scraping: poll Transport for NSW on a schedule and commit each snapshot.
+# Over time the repo accumulates a reproducible history of network performance.
+on:
+  schedule:
+    # Every 15 minutes. Frequent enough to capture peak-hour dynamics without
+    # hammering the free API tier. Cron is UTC.
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}  # allow manual runs from the Actions tab
+
+# Prevent overlapping runs from racing on the same commit.
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # needed to commit the snapshot back
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Pull real-time snapshots
+        env:
+          TFNSW_API_KEY: ${{ secrets.TFNSW_API_KEY }}
+        run: |
+          # Fall back to synthetic data if no key is configured, so the demo
+          # repo keeps producing commits even before secrets are set.
+          if [ -z "$TFNSW_API_KEY" ]; then
+            echo "No TFNSW_API_KEY secret set; generating synthetic snapshot."
+            USE_FIXTURE=1 python -m pipeline.ingest
+          else
+            python -m pipeline.ingest
+          fi
+
+      - name: Rebuild analytics (sanity check the transform on fresh data)
+        run: python -m pipeline.transform
+
+      - name: Commit snapshot
+        run: |
+          git config user.name "transit-scraper-bot"
+          git config user.email "actions@github.com"
+          git add data/raw
+          if git diff --cached --quiet; then
+            echo "No new data this cycle."
+          else
+            git commit -m "data: transit snapshot $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git push
+          fi

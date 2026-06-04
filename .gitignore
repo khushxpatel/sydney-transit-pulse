@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# Local secrets
+.env
+
+# Built analytics artefact (rebuilt from raw snapshots; not source of truth)
+data/analytics.duckdb
+
+# OS
+.DS_Store
+
+# NOTE: data/raw/*.parquet is intentionally NOT ignored. The whole point of the
+# git-scraping pattern is that committed snapshots become the historical record.
